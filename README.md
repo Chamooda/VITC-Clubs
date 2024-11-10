@@ -1,0 +1,1 @@
+NextJS server go brrr
