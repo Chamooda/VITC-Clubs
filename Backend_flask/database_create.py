@@ -1,0 +1,71 @@
+import sqlite3
+
+conn = sqlite3.connect('/Users/vedanshkumar/Documents/Projects_sem5/AWS/Backend/details.db')
+cursor = conn.cursor()
+
+club_table_creation = '''
+CREATE TABLE IF NOT EXISTS CLUB_DETAILS (
+    CLUB_ID VARCHAR(100) PRIMARY KEY,
+    CLUB_NAME VARCHAR(100) UNIQUE,
+    COLLEGE VARCHAR(100) NOT NULL,
+    EMAIL VARCHAR(200),
+    PASSWORD TEXT
+)
+'''
+
+sponsor_table_creation = '''
+CREATE TABLE IF NOT EXISTS SPONSOR_DETAILS (
+    SPONSOR_ID VARCHAR(100) PRIMARY KEY,
+    SPONSOR_NAME VARCHAR(100) UNIQUE,
+    INDUSTRY VARCHAR(100) NOT NULL,
+    EMAIL VARCHAR(200),
+    PASSWORD TEXT
+)
+'''
+
+event_table_creation = '''
+CREATE TABLE IF NOT EXISTS EVENT_DETAILS (
+    EVENT_ID VARCHAR(100) PRIMARY KEY,
+    CLUB_ID VARCHAR(100) NOT NULL,
+    EVENT_NAME VARCHAR(100) UNIQUE,
+    EVENT_DATE DATE NOT NULL,
+    LOCATION VARCHAR(100),
+    SPONSOR_AMOUNT INTEGER,
+    DESCRIPTION TEXT,
+    IMAGE_URL TEXT NOT NULL
+)
+'''
+
+transaction_table_creaton = '''
+CREATE TABLE IF NOT EXISTS SPONSOR_CONFIRM (
+    EVENT_ID VARCHAR(100) PRIMARY KEY,
+    CLUB_ID VARCHAR(100) NOT NULL,
+    EVENT_NAME VARCHAR(100) UNIQUE,
+    EVENT_DATE DATE NOT NULL,
+    LOCATION VARCHAR(100),
+    SPONSOR_AMOUNT INTEGER
+)
+'''
+
+redundent_table_creation = '''
+CREATE TABLE IF NOT EXISTS REDUNDENT_DETAILS(
+    EVENT_ID VARCHAR(100) PRIMARY KEY,
+    CLUB_ID VARCHAR(100) NOT NULL,
+    EVENT_NAME VARCHAR(100) UNIQUE,
+    EVENT_DATE DATE NOT NULL,
+    LOCATION VARCHAR(100),
+    SPONSOR_AMOUNT INTEGER,
+    DESCRIPTION TEXT,
+    IMAGE_URL TEXT NOT NULL
+)
+'''
+
+
+cursor.execute(club_table_creation)
+cursor.execute(event_table_creation)
+cursor.execute(sponsor_table_creation)
+
+conn.commit()
+conn.close()
+
+print("Table created successfully.")
