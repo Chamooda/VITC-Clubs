@@ -1,233 +1,137 @@
 from flask import Flask, request, jsonify
-import sqlite3
+import mysql.connector
+from mysql.connector import Error
 
 app = Flask(__name__)
-DATABASE_PATH = '/Users/vedanshkumar/Documents/Projects_sem5/AWS/Backend/details.db'
 
+# Database connection function
 def get_db_connection():
-    conn = sqlite3.connect(DATABASE_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return mysql.connector.connect(
+        host='DB_HOST',
+        user='DB_USER',
+        password='DB_PASSWORD',
+        database='DB_NAME'
+    )
 
-# -----------CLUB TABLE-----------
+# Generic function for executing SQL commands
+def execute_query(query, params=()):
+    connection = get_db_connection()
+    cursor = connection.cursor(dictionary=True)
+    try:
+        cursor.execute(query, params)
+        connection.commit()
+        return cursor.lastrowid if cursor.rowcount > 0 else None
+    except Error as e:
+        print(f"Error: {e}")
+        return None
+    finally:
+        cursor.close()
+        connection.close()
 
-# Create a new club
+# Endpoint to insert data into CLUB_DETAILS
 @app.route('/club', methods=['POST'])
-def create_club():
+def insert_club():
     data = request.json
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO CLUB_DETAILS (CLUB_ID, CLUB_NAME, COLLEGE, EMAIL, PASSWORD)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (data['CLUB_ID'], data['CLUB_NAME'], data['COLLEGE'], data['EMAIL'], data['PASSWORD']))
-        conn.commit()
-    return jsonify({'message': 'Club created successfully'}), 201
+    query = '''INSERT INTO CLUB_DETAILS (CLUB_ID, CLUB_NAME, COLLEGE, EMAIL, PASSWORD)
+               VALUES (%s, %s, %s, %s, %s)'''
+    execute_query(query, (data['CLUB_ID'], data['CLUB_NAME'], data['COLLEGE'], data['EMAIL'], data['PASSWORD']))
+    return jsonify({"message": "Club inserted successfully"}), 201
 
-# Read all clubs
-@app.route('/clubs', methods=['GET'])
-def get_clubs():
-    conn = get_db_connection()
-    clubs = conn.execute('SELECT * FROM CLUB_DETAILS').fetchall()
-    conn.close()
-    return jsonify([dict(row) for row in clubs])
-
-# Update a club by ID
+# Endpoint to update data in CLUB_DETAILS
 @app.route('/club/<club_id>', methods=['PUT'])
 def update_club(club_id):
     data = request.json
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            UPDATE CLUB_DETAILS SET CLUB_NAME=?, COLLEGE=?, EMAIL=?, PASSWORD=?
-            WHERE CLUB_ID=?
-        ''', (data['CLUB_NAME'], data['COLLEGE'], data['EMAIL'], data['PASSWORD'], club_id))
-        conn.commit()
-    return jsonify({'message': 'Club updated successfully'})
+    query = '''UPDATE CLUB_DETAILS SET CLUB_NAME = %s, COLLEGE = %s, EMAIL = %s, PASSWORD = %s
+               WHERE CLUB_ID = %s'''
+    execute_query(query, (data['CLUB_NAME'], data['COLLEGE'], data['EMAIL'], data['PASSWORD'], club_id))
+    return jsonify({"message": "Club updated successfully"})
 
-# Delete a club by ID
+# Endpoint to delete data from CLUB_DETAILS
 @app.route('/club/<club_id>', methods=['DELETE'])
 def delete_club(club_id):
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM CLUB_DETAILS WHERE CLUB_ID=?', (club_id,))
-        conn.commit()
-    return jsonify({'message': 'Club deleted successfully'})
+    query = "DELETE FROM CLUB_DETAILS WHERE CLUB_ID = %s"
+    execute_query(query, (club_id,))
+    return jsonify({"message": "Club deleted successfully"})
 
-# -----------SPONSOR TABLE-----------
-
-# Create a new sponsor
+# Repeat similar endpoints for SPONSOR_DETAILS
 @app.route('/sponsor', methods=['POST'])
-def create_sponsor():
+def insert_sponsor():
     data = request.json
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO SPONSOR_DETAILS (SPONSOR_ID, SPONSOR_NAME, INDUSTRY, EMAIL, PASSWORD)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (data['SPONSOR_ID'], data['SPONSOR_NAME'], data['INDUSTRY'], data['EMAIL'], data['PASSWORD']))
-        conn.commit()
-    return jsonify({'message': 'Sponsor created successfully'}), 201
+    query = '''INSERT INTO SPONSOR_DETAILS (SPONSOR_ID, SPONSOR_NAME, INDUSTRY, EMAIL, PASSWORD)
+               VALUES (%s, %s, %s, %s, %s)'''
+    execute_query(query, (data['SPONSOR_ID'], data['SPONSOR_NAME'], data['INDUSTRY'], data['EMAIL'], data['PASSWORD']))
+    return jsonify({"message": "Sponsor inserted successfully"}), 201
 
-# Read all sponsors
-@app.route('/sponsors', methods=['GET'])
-def get_sponsors():
-    conn = get_db_connection()
-    sponsors = conn.execute('SELECT * FROM SPONSOR_DETAILS').fetchall()
-    conn.close()
-    return jsonify([dict(row) for row in sponsors])
-
-# Update a sponsor by ID
 @app.route('/sponsor/<sponsor_id>', methods=['PUT'])
 def update_sponsor(sponsor_id):
     data = request.json
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            UPDATE SPONSOR_DETAILS SET SPONSOR_NAME=?, INDUSTRY=?, EMAIL=?, PASSWORD=?
-            WHERE SPONSOR_ID=?
-        ''', (data['SPONSOR_NAME'], data['INDUSTRY'], data['EMAIL'], data['PASSWORD'], sponsor_id))
-        conn.commit()
-    return jsonify({'message': 'Sponsor updated successfully'})
+    query = '''UPDATE SPONSOR_DETAILS SET SPONSOR_NAME = %s, INDUSTRY = %s, EMAIL = %s, PASSWORD = %s
+               WHERE SPONSOR_ID = %s'''
+    execute_query(query, (data['SPONSOR_NAME'], data['INDUSTRY'], data['EMAIL'], data['PASSWORD'], sponsor_id))
+    return jsonify({"message": "Sponsor updated successfully"})
 
-# Delete a sponsor by ID
 @app.route('/sponsor/<sponsor_id>', methods=['DELETE'])
 def delete_sponsor(sponsor_id):
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM SPONSOR_DETAILS WHERE SPONSOR_ID=?', (sponsor_id,))
-        conn.commit()
-    return jsonify({'message': 'Sponsor deleted successfully'})
+    query = "DELETE FROM SPONSOR_DETAILS WHERE SPONSOR_ID = %s"
+    execute_query(query, (sponsor_id,))
+    return jsonify({"message": "Sponsor deleted successfully"})
 
-#-------EVENT_DETAILS TABLE-----------
-
-# Create a new event
+# Repeat similar endpoints for EVENT_DETAILS
 @app.route('/event', methods=['POST'])
-def create_event():
+def insert_event():
     data = request.json
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO EVENT_DETAILS (EVENT_ID, CLUB_ID, EVENT_NAME, EVENT_DATE, LOCATION, SPONSOR_AMOUNT, DESCRIPTION, IMAGE_URL)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (data['EVENT_ID'], data['CLUB_ID'], data['EVENT_NAME'], data['EVENT_DATE'], data['LOCATION'], data['SPONSOR_AMOUNT'], data['DESCRIPTION'], data['IMAGE_URL']))
-        conn.commit()
-    return jsonify({'message': 'Event created successfully'}), 201
+    query = '''INSERT INTO EVENT_DETAILS (EVENT_ID, CLUB_ID, EVENT_NAME, EVENT_DATE, LOCATION, SPONSOR_AMOUNT, DESCRIPTION, IMAGE_URL)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)'''
+    execute_query(query, (data['EVENT_ID'], data['CLUB_ID'], data['EVENT_NAME'], data['EVENT_DATE'],
+                          data['LOCATION'], data['SPONSOR_AMOUNT'], data['DESCRIPTION'], data['IMAGE_URL']))
+    return jsonify({"message": "Event inserted successfully"}), 201
 
-# Read all events
-@app.route('/events', methods=['GET'])
-def get_events():
-    conn = get_db_connection()
-    events = conn.execute('SELECT * FROM EVENT_DETAILS').fetchall()
-    conn.close()
-    return jsonify([dict(row) for row in events])
-
-# Update an event by ID
 @app.route('/event/<event_id>', methods=['PUT'])
 def update_event(event_id):
     data = request.json
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            UPDATE EVENT_DETAILS SET CLUB_ID=?, EVENT_NAME=?, EVENT_DATE=?, LOCATION=?, SPONSOR_AMOUNT=?, DESCRIPTION=?, IMAGE_URL=?
-            WHERE EVENT_ID=?
-        ''', (data['CLUB_ID'], data['EVENT_NAME'], data['EVENT_DATE'], data['LOCATION'], data['SPONSOR_AMOUNT'], data['DESCRIPTION'], data['IMAGE_URL'], event_id))
-        conn.commit()
-    return jsonify({'message': 'Event updated successfully'})
+    query = '''UPDATE EVENT_DETAILS SET CLUB_ID = %s, EVENT_NAME = %s, EVENT_DATE = %s, LOCATION = %s,
+               SPONSOR_AMOUNT = %s, DESCRIPTION = %s, IMAGE_URL = %s WHERE EVENT_ID = %s'''
+    execute_query(query, (data['CLUB_ID'], data['EVENT_NAME'], data['EVENT_DATE'], data['LOCATION'],
+                          data['SPONSOR_AMOUNT'], data['DESCRIPTION'], data['IMAGE_URL'], event_id))
+    return jsonify({"message": "Event updated successfully"})
 
-# Delete an event by ID
 @app.route('/event/<event_id>', methods=['DELETE'])
 def delete_event(event_id):
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM EVENT_DETAILS WHERE EVENT_ID=?', (event_id,))
-        conn.commit()
-    return jsonify({'message': 'Event deleted successfully'})
+    query = "DELETE FROM EVENT_DETAILS WHERE EVENT_ID = %s"
+    execute_query(query, (event_id,))
+    return jsonify({"message": "Event deleted successfully"})
 
-#---------SPONSOR CONFIRM-------------------
-# Create a new sponsor confirmation
+# Repeat similar endpoints for SPONSOR_CONFIRM
 @app.route('/sponsor_confirm', methods=['POST'])
-def create_sponsor_confirm():
+def insert_sponsor_confirm():
     data = request.json
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO SPONSOR_CONFIRM (EVENT_ID, CLUB_ID, EVENT_NAME, EVENT_DATE, LOCATION, SPONSOR_AMOUNT)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (data['EVENT_ID'], data['CLUB_ID'], data['EVENT_NAME'], data['EVENT_DATE'], data['LOCATION'], data['SPONSOR_AMOUNT']))
-        conn.commit()
-    return jsonify({'message': 'Sponsor confirmation created successfully'}), 201
+    query = '''INSERT INTO SPONSOR_CONFIRM (EVENT_ID, CLUB_ID, EVENT_NAME, EVENT_DATE, LOCATION, SPONSOR_AMOUNT)
+               VALUES (%s, %s, %s, %s, %s, %s)'''
+    execute_query(query, (data['EVENT_ID'], data['CLUB_ID'], data['EVENT_NAME'], data['EVENT_DATE'],
+                          data['LOCATION'], data['SPONSOR_AMOUNT']))
+    return jsonify({"message": "Sponsor confirmation inserted successfully"}), 201
 
-# Read all sponsor confirmations
-@app.route('/sponsor_confirms', methods=['GET'])
-def get_sponsor_confirms():
-    conn = get_db_connection()
-    sponsor_confirms = conn.execute('SELECT * FROM SPONSOR_CONFIRM').fetchall()
-    conn.close()
-    return jsonify([dict(row) for row in sponsor_confirms])
-
-# Update a sponsor confirmation by event ID
-@app.route('/sponsor_confirm/<event_id>', methods=['PUT'])
-def update_sponsor_confirm(event_id):
-    data = request.json
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            UPDATE SPONSOR_CONFIRM SET CLUB_ID=?, EVENT_NAME=?, EVENT_DATE=?, LOCATION=?, SPONSOR_AMOUNT=?
-            WHERE EVENT_ID=?
-        ''', (data['CLUB_ID'], data['EVENT_NAME'], data['EVENT_DATE'], data['LOCATION'], data['SPONSOR_AMOUNT'], event_id))
-        conn.commit()
-    return jsonify({'message': 'Sponsor confirmation updated successfully'})
-
-# Delete a sponsor confirmation by event ID
 @app.route('/sponsor_confirm/<event_id>', methods=['DELETE'])
 def delete_sponsor_confirm(event_id):
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM SPONSOR_CONFIRM WHERE EVENT_ID=?', (event_id,))
-        conn.commit()
-    return jsonify({'message': 'Sponsor confirmation deleted successfully'})
+    query = "DELETE FROM SPONSOR_CONFIRM WHERE EVENT_ID = %s"
+    execute_query(query, (event_id,))
+    return jsonify({"message": "Sponsor confirmation deleted successfully"})
 
-#---------REDUNDENT_DETAILS TABLE-------------
-# Create a new redundant detail
-@app.route('/redundant_detail', methods=['POST'])
-def create_redundant_detail():
+# Repeat similar endpoints for REDUNDENT_DETAILS
+@app.route('/redundent', methods=['POST'])
+def insert_redundent():
     data = request.json
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO REDUNDENT_DETAILS (EVENT_ID, CLUB_ID, EVENT_NAME, EVENT_DATE, LOCATION, SPONSOR_AMOUNT, DESCRIPTION, IMAGE_URL)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (data['EVENT_ID'], data['CLUB_ID'], data['EVENT_NAME'], data['EVENT_DATE'], data['LOCATION'], data['SPONSOR_AMOUNT'], data['DESCRIPTION'], data['IMAGE_URL']))
-        conn.commit()
-    return jsonify({'message': 'Redundant detail created successfully'}), 201
+    query = '''INSERT INTO REDUNDENT_DETAILS (EVENT_ID, CLUB_ID, EVENT_NAME, EVENT_DATE, LOCATION, SPONSOR_AMOUNT, DESCRIPTION, IMAGE_URL)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)'''
+    execute_query(query, (data['EVENT_ID'], data['CLUB_ID'], data['EVENT_NAME'], data['EVENT_DATE'],
+                          data['LOCATION'], data['SPONSOR_AMOUNT'], data['DESCRIPTION'], data['IMAGE_URL']))
+    return jsonify({"message": "Redundent detail inserted successfully"}), 201
 
-# Read all redundant details
-@app.route('/redundant_details', methods=['GET'])
-def get_redundant_details():
-    conn = get_db_connection()
-    redundant_details = conn.execute('SELECT * FROM REDUNDENT_DETAILS').fetchall()
-    conn.close()
-    return jsonify([dict(row) for row in redundant_details])
+@app.route('/redundent/<event_id>', methods=['DELETE'])
+def delete_redundent(event_id):
+    query = "DELETE FROM REDUNDENT_DETAILS WHERE EVENT_ID = %s"
+    execute_query(query, (event_id,))
+    return jsonify({"message": "Redundent detail deleted successfully"})
 
-# Update a redundant detail by event ID
-@app.route('/redundant_detail/<event_id>', methods=['PUT'])
-def update_redundant_detail(event_id):
-    data = request.json
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            UPDATE REDUNDENT_DETAILS SET CLUB_ID=?, EVENT_NAME=?, EVENT_DATE=?, LOCATION=?, SPONSOR_AMOUNT=?, DESCRIPTION=?, IMAGE_URL=?
-            WHERE EVENT_ID=?
-        ''', (data['CLUB_ID'], data['EVENT_NAME'], data['EVENT_DATE'], data['LOCATION'], data['SPONSOR_AMOUNT'], data['DESCRIPTION'], data['IMAGE_URL'], event_id))
-        conn.commit()
-    return jsonify({'message': 'Redundant detail updated successfully'})
-
-# Delete a redundant detail by event ID
-@app.route('/redundant_detail/<event_id>', methods=['DELETE'])
-def delete_redundant_detail(event_id):
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM REDUNDENT_DETAILS WHERE EVENT_ID=?', (event_id,))
-        conn.commit()
-    return jsonify({'message': 'Redundant detail deleted successfully'})
+if __name__ == '__main__':
+    app.run(debug=True)
