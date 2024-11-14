@@ -10,7 +10,8 @@ db_config = {
     'user': 'admin',
     'password': 'iheqoEEP7673!',
     'host': 'aws-database-2.cbg00emmolxk.ap-south-1.rds.amazonaws.com',
-    'database': 'AWS'
+    'database': 'AWS',
+    'ssl_disabled':True
 }
 
 # Amazon Cognito configuration
