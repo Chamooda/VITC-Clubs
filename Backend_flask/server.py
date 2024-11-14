@@ -1,137 +1,310 @@
 from flask import Flask, request, jsonify
 import mysql.connector
-from mysql.connector import Error
+import boto3
+from botocore.exceptions import ClientError
 
 app = Flask(__name__)
 
-# Database connection function
-def get_db_connection():
-    return mysql.connector.connect(
-        host='DB_HOST',
-        user='DB_USER',
-        password='DB_PASSWORD',
-        database='DB_NAME'
-    )
+# Amazon RDS MySQL connection configuration
+db_config = {
+    'user': 'admin',
+    'password': 'iheqoEEP7673!',
+    'host': 'aws-database-2.cbg00emmolxk.ap-south-1.rds.amazonaws.com',
+    'database': 'AWS'
+}
 
-# Generic function for executing SQL commands
-def execute_query(query, params=()):
-    connection = get_db_connection()
-    cursor = connection.cursor(dictionary=True)
+# Amazon Cognito configuration
+cognito_client = boto3.client('cognito-idp', region_name='ap-south-1')
+user_pool_id = 'ap-south-1_TimL919pQ'
+client_id = '4ccp0ohq6uqv24sb4r74cj9abs'
+
+# Function to connect to the MySQL database
+def get_db_connection():
     try:
-        cursor.execute(query, params)
-        connection.commit()
-        return cursor.lastrowid if cursor.rowcount > 0 else None
-    except Error as e:
-        print(f"Error: {e}")
+        conn = mysql.connector.connect(**db_config)
+        return conn
+    except mysql.connector.Error as err:
+        print(f"Error: {err}")
         return None
+
+# Club Signup
+# @app.route('/club/signup', methods=['POST'])
+# def club_signup():
+#     data = request.json
+#     club_name = data.get('Club Name')
+#     college = data.get('College')
+#     email = data.get('Email')
+#     password = data.get('Password')
+
+#     # Create user in Cognito
+#     try:
+#         cognito_client.sign_up(
+#             ClientId=client_id,
+#             Username=email,
+#             Password=password,
+#             UserAttributes=[
+#                 {'Name': 'email', 'Value': email},
+#                 {'Name': 'custom:club_name', 'Value': club_name},
+#                 {'Name': 'custom:college', 'Value': college}
+#             ]
+#         )
+#     except ClientError as e:
+#         return jsonify({"error": str(e)}), 400
+
+#     # Store club info in MySQL
+#     conn = get_db_connection()
+#     cursor = conn.cursor()
+#     try:
+#         cursor.execute("INSERT INTO CLUB_DETAILS (club_name, college, email) VALUES (%s, %s, %s)", (club_name, college, email))
+#         conn.commit()
+#     except mysql.connector.Error as err:
+#         return jsonify({"error": str(err)}), 400
+#     finally:
+#         cursor.close()
+#         conn.close()
+
+#     return jsonify({"message": "Club signed up successfully"}), 201
+
+# Club Signup
+@app.route('/club/signup', methods=['POST'])
+def club_signup():
+    data = request.json
+    club_name = data.get('Club Name')
+    college = data.get('College')
+    email = data.get('Email')
+    password = data.get('Password')  # Use hashed passwords in production
+
+    # Register user in AWS Cognito
+    try:
+        cognito_client.sign_up(
+            ClientId=client_id,
+            Username=email,
+            Password=password,
+            UserAttributes=[
+                {'Name': 'email', 'Value': email},
+                {'Name': 'custom:club_name', 'Value': club_name},
+                {'Name': 'custom:college', 'Value': college}
+            ]
+        )
+    except ClientError as e:
+        return jsonify({"error": str(e)}), 400
+
+    # Insert into MySQL Users and CLUB_DETAILS tables
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # Insert into Users table
+        cursor.execute(
+            "INSERT INTO Users (Email, PasswordHash, UserType) VALUES (%s, %s, %s)",
+            (email, password, 'club')
+        )
+        conn.commit()
+
+        # Get the UserID of the newly inserted user
+        user_id = cursor.lastrowid
+
+        # Insert into CLUB_DETAILS table
+        cursor.execute(
+            "INSERT INTO CLUB_DETAILS (UserID, ClubName, College) VALUES (%s, %s, %s)",
+            (user_id, club_name, college)
+        )
+        conn.commit()
+    except mysql.connector.Error as err:
+        conn.rollback()
+        return jsonify({"error": str(err)}), 400
     finally:
         cursor.close()
-        connection.close()
+        conn.close()
 
-# Endpoint to insert data into CLUB_DETAILS
-@app.route('/club', methods=['POST'])
-def insert_club():
+    return jsonify({"message": "Club signed up successfully"}), 201
+
+# Sponsor Signup
+@app.route('/company/signup', methods=['POST'])
+def sponsor_signup():
     data = request.json
-    query = '''INSERT INTO CLUB_DETAILS (CLUB_ID, CLUB_NAME, COLLEGE, EMAIL, PASSWORD)
-               VALUES (%s, %s, %s, %s, %s)'''
-    execute_query(query, (data['CLUB_ID'], data['CLUB_NAME'], data['COLLEGE'], data['EMAIL'], data['PASSWORD']))
-    return jsonify({"message": "Club inserted successfully"}), 201
+    company_name = data.get('Company name')
+    industry = data.get('Industry')
+    email = data.get('Email')
+    password = data.get('Password')
 
-# Endpoint to update data in CLUB_DETAILS
-@app.route('/club/<club_id>', methods=['PUT'])
-def update_club(club_id):
+    # Create user in Cognito
+    try:
+        cognito_client.sign_up(
+            ClientId=client_id,
+            Username=email,
+            Password=password,
+            UserAttributes=[
+                {'Name': 'email', 'Value': email},
+                {'Name': 'custom:company_name', 'Value': company_name},
+                {'Name': 'custom:industry', 'Value': industry}
+            ]
+        )
+    except ClientError as e:
+        return jsonify({"error": str(e)}), 400
+
+    # Store sponsor info in MySQL
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("INSERT INTO SPONSOR_DETAILS (company_name, industry, email) VALUES (%s, %s, %s)", (company_name, industry, email))
+        conn.commit()
+    except mysql.connector.Error as err:
+        return jsonify({"error": str(err)}), 400
+    finally:
+        cursor.close()
+        conn.close()
+
+    return jsonify({"message": "Sponsor signed up successfully"}), 201
+
+# Verify email
+# Email Verification
+@app.route('/verify_email', methods=['POST'])
+def verify_email():
     data = request.json
-    query = '''UPDATE CLUB_DETAILS SET CLUB_NAME = %s, COLLEGE = %s, EMAIL = %s, PASSWORD = %s
-               WHERE CLUB_ID = %s'''
-    execute_query(query, (data['CLUB_NAME'], data['COLLEGE'], data['EMAIL'], data['PASSWORD'], club_id))
-    return jsonify({"message": "Club updated successfully"})
+    email = data.get('Email')
+    confirmation_code = data.get('ConfirmationCode')
 
-# Endpoint to delete data from CLUB_DETAILS
-@app.route('/club/<club_id>', methods=['DELETE'])
-def delete_club(club_id):
-    query = "DELETE FROM CLUB_DETAILS WHERE CLUB_ID = %s"
-    execute_query(query, (club_id,))
-    return jsonify({"message": "Club deleted successfully"})
+    # Confirm sign-up using Cognito
+    try:
+        cognito_client.confirm_sign_up(
+            ClientId=client_id,
+            Username=email,
+            ConfirmationCode=confirmation_code
+        )
+        return jsonify({"message": "Email verified successfully"}), 200
+    except ClientError as e:
+        return jsonify({"error": str(e)}), 400
 
-# Repeat similar endpoints for SPONSOR_DETAILS
-@app.route('/sponsor', methods=['POST'])
-def insert_sponsor():
+
+# Club Login
+@app.route('/club/login', methods=['POST'])
+def club_login():
     data = request.json
-    query = '''INSERT INTO SPONSOR_DETAILS (SPONSOR_ID, SPONSOR_NAME, INDUSTRY, EMAIL, PASSWORD)
-               VALUES (%s, %s, %s, %s, %s)'''
-    execute_query(query, (data['SPONSOR_ID'], data['SPONSOR_NAME'], data['INDUSTRY'], data['EMAIL'], data['PASSWORD']))
-    return jsonify({"message": "Sponsor inserted successfully"}), 201
+    email = data.get('Email')
+    password = data.get('Password')
 
-@app.route('/sponsor/<sponsor_id>', methods=['PUT'])
-def update_sponsor(sponsor_id):
+    # Attempt login with Cognito
+    try:
+        response = cognito_client.initiate_auth(
+            ClientId=client_id,
+            AuthFlow='USER_PASSWORD_AUTH',
+            AuthParameters={
+                'USERNAME': email,
+                'PASSWORD': password
+            }
+        )
+        return jsonify({"message": "Club logged in successfully", "token": response['AuthenticationResult']['AccessToken']}), 200
+    except ClientError as e:
+        return jsonify({"error": str(e)}), 400
+
+# Company Login
+@app.route('/company/login', methods=['POST'])
+def company_login():
     data = request.json
-    query = '''UPDATE SPONSOR_DETAILS SET SPONSOR_NAME = %s, INDUSTRY = %s, EMAIL = %s, PASSWORD = %s
-               WHERE SPONSOR_ID = %s'''
-    execute_query(query, (data['SPONSOR_NAME'], data['INDUSTRY'], data['EMAIL'], data['PASSWORD'], sponsor_id))
-    return jsonify({"message": "Sponsor updated successfully"})
+    email = data.get('Email')
+    password = data.get('Password')
 
-@app.route('/sponsor/<sponsor_id>', methods=['DELETE'])
-def delete_sponsor(sponsor_id):
-    query = "DELETE FROM SPONSOR_DETAILS WHERE SPONSOR_ID = %s"
-    execute_query(query, (sponsor_id,))
-    return jsonify({"message": "Sponsor deleted successfully"})
+    # Attempt login with Cognito
+    try:
+        response = cognito_client.initiate_auth(
+            ClientId=client_id,
+            AuthFlow='USER_PASSWORD_AUTH',
+            AuthParameters={
+                'USERNAME': email,
+                'PASSWORD': password
+            }
+        )
+        return jsonify({"message": "Company logged in successfully", "token": response['AuthenticationResult']['AccessToken']}), 200
+    except ClientError as e:
+        return jsonify({"error": str(e)}), 400
 
-# Repeat similar endpoints for EVENT_DETAILS
-@app.route('/event', methods=['POST'])
-def insert_event():
+# Password reset initiation
+@app.route('/password/reset', methods=['POST'])
+def initiate_password_reset():
     data = request.json
-    query = '''INSERT INTO EVENT_DETAILS (EVENT_ID, CLUB_ID, EVENT_NAME, EVENT_DATE, LOCATION, SPONSOR_AMOUNT, DESCRIPTION, IMAGE_URL)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)'''
-    execute_query(query, (data['EVENT_ID'], data['CLUB_ID'], data['EVENT_NAME'], data['EVENT_DATE'],
-                          data['LOCATION'], data['SPONSOR_AMOUNT'], data['DESCRIPTION'], data['IMAGE_URL']))
-    return jsonify({"message": "Event inserted successfully"}), 201
+    email = data.get('Email')
 
-@app.route('/event/<event_id>', methods=['PUT'])
-def update_event(event_id):
+    try:
+        cognito_client.forgot_password(
+            ClientId=client_id,
+            Username=email
+        )
+        return jsonify({"message": "Password reset initiated"}), 200
+    except ClientError as e:
+        return jsonify({"error": str(e)}), 400
+
+# Confirm password reset
+@app.route('/password/confirm_reset', methods=['POST'])
+def confirm_password_reset():
     data = request.json
-    query = '''UPDATE EVENT_DETAILS SET CLUB_ID = %s, EVENT_NAME = %s, EVENT_DATE = %s, LOCATION = %s,
-               SPONSOR_AMOUNT = %s, DESCRIPTION = %s, IMAGE_URL = %s WHERE EVENT_ID = %s'''
-    execute_query(query, (data['CLUB_ID'], data['EVENT_NAME'], data['EVENT_DATE'], data['LOCATION'],
-                          data['SPONSOR_AMOUNT'], data['DESCRIPTION'], data['IMAGE_URL'], event_id))
-    return jsonify({"message": "Event updated successfully"})
+    email = data.get('Email')
+    new_password = data.get('New Password')
+    confirmation_code = data.get('Confirmation Code')
 
-@app.route('/event/<event_id>', methods=['DELETE'])
-def delete_event(event_id):
-    query = "DELETE FROM EVENT_DETAILS WHERE EVENT_ID = %s"
-    execute_query(query, (event_id,))
-    return jsonify({"message": "Event deleted successfully"})
+    try:
+        cognito_client.confirm_forgot_password(
+            ClientId=client_id,
+            Username=email,
+            ConfirmationCode=confirmation_code,
+            Password=new_password
+        )
+        return jsonify({"message": "Password reset successful"}), 200
+    except ClientError as e:
+        return jsonify({"error": str(e)}), 400
 
-# Repeat similar endpoints for SPONSOR_CONFIRM
-@app.route('/sponsor_confirm', methods=['POST'])
-def insert_sponsor_confirm():
+# Club Create Event
+@app.route('/club/create_event', methods=['POST'])
+def create_event():
     data = request.json
-    query = '''INSERT INTO SPONSOR_CONFIRM (EVENT_ID, CLUB_ID, EVENT_NAME, EVENT_DATE, LOCATION, SPONSOR_AMOUNT)
-               VALUES (%s, %s, %s, %s, %s, %s)'''
-    execute_query(query, (data['EVENT_ID'], data['CLUB_ID'], data['EVENT_NAME'], data['EVENT_DATE'],
-                          data['LOCATION'], data['SPONSOR_AMOUNT']))
-    return jsonify({"message": "Sponsor confirmation inserted successfully"}), 201
+    event_title = data.get('Event Title')
+    date = data.get('Date')
+    location = data.get('Location')
+    amount = data.get('Amount')
+    description = data.get('Description')
+    image_url = data.get('Image URL')
 
-@app.route('/sponsor_confirm/<event_id>', methods=['DELETE'])
-def delete_sponsor_confirm(event_id):
-    query = "DELETE FROM SPONSOR_CONFIRM WHERE EVENT_ID = %s"
-    execute_query(query, (event_id,))
-    return jsonify({"message": "Sponsor confirmation deleted successfully"})
+    # Insert event details in MySQL
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "INSERT INTO EVENT_DETAILS (event_title, date, location, amount, description, image_url) VALUES (%s, %s, %s, %s, %s, %s)",
+            (event_title, date, location, amount, description, image_url)
+        )
+        conn.commit()
+    except mysql.connector.Error as err:
+        return jsonify({"error": str(err)}), 400
+    finally:
+        cursor.close()
+        conn.close()
 
-# Repeat similar endpoints for REDUNDENT_DETAILS
-@app.route('/redundent', methods=['POST'])
-def insert_redundent():
+    return jsonify({"message": "Event created successfully"}), 201
+
+# Sponsorship Endpoint
+@app.route('/company/sponsor', methods=['POST'])
+def sponsorship():
     data = request.json
-    query = '''INSERT INTO REDUNDENT_DETAILS (EVENT_ID, CLUB_ID, EVENT_NAME, EVENT_DATE, LOCATION, SPONSOR_AMOUNT, DESCRIPTION, IMAGE_URL)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)'''
-    execute_query(query, (data['EVENT_ID'], data['CLUB_ID'], data['EVENT_NAME'], data['EVENT_DATE'],
-                          data['LOCATION'], data['SPONSOR_AMOUNT'], data['DESCRIPTION'], data['IMAGE_URL']))
-    return jsonify({"message": "Redundent detail inserted successfully"}), 201
+    event_id = data.get('event id')
+    sponsorship_amount = data.get('Sponsorship Amount')
+    message = data.get('Message')
 
-@app.route('/redundent/<event_id>', methods=['DELETE'])
-def delete_redundent(event_id):
-    query = "DELETE FROM REDUNDENT_DETAILS WHERE EVENT_ID = %s"
-    execute_query(query, (event_id,))
-    return jsonify({"message": "Redundent detail deleted successfully"})
+    # Insert sponsorship details in MySQL
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "INSERT INTO SPONSOR_CONFIRM (event_id, sponsorship_amount, message) VALUES (%s, %s, %s)",
+            (event_id, sponsorship_amount, message)
+        )
+        conn.commit()
+    except mysql.connector.Error as err:
+        return jsonify({"error": str(err)}), 400
+    finally:
+        cursor.close()
+        conn.close()
 
+    return jsonify({"message": "Sponsorship added successfully"}), 201
+
+# Run the application
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, host='0.0.0.0', port=5000)
