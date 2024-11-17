@@ -28,17 +28,15 @@ db_config = {
 # AWS Cognito client setup
 cognito_client = boto3.client('cognito-idp', region_name=app.config['COGNITO_REGION'])
 
-# Sign Up for Club - Initial step for collecting data and sending verification code
-@app.route('/signup/club', methods=['POST'])
+#--------------COMPANY----------------
+# Sign Up for Company - Initial step for collecting data and sending verification code
+@app.route('/company/signup', methods=['POST'])
 def signup_club():
     data = request.json
-    club_name = data.get('club_name')
+    company_name = data.get('company_name')
     email = data.get('email')
     password = data.get('password')
-    contact_number = data.get('contact_number')
-
-    # Hash the password
-    password_hash = password
+    Industry = data.get('Industry')
 
     # Register user in Cognito and send a verification code to the email
     try:
@@ -54,17 +52,17 @@ def signup_club():
         return jsonify({"error": str(e)}), 400
 
     # Store the temporary club data for later use upon verification
-    session['temp_signup_data'] = {
-        'club_name': club_name,
+    session['temp_signup_data_company'] = {
+        'company_name': company_name,
+        'Industry': Industry,
         'email': email,
-        'password_hash': password_hash,
-        'contact_number': contact_number
+        'password': password
     }
 
     return jsonify({"message": "Verification code sent to email"}), 200
 
-# Verify Email and Complete Sign Up
-@app.route('/verify_email', methods=['POST'])
+# Verify Email and Complete Sign Up club
+@app.route('/company/verify_email', methods=['POST'])
 def verify_email():
     data = request.json
     email = data.get('email')
@@ -81,7 +79,7 @@ def verify_email():
         return jsonify({"error": "Invalid verification code or email"}), 400
 
     # Retrieve temporary signup data
-    temp_data = session.get('temp_signup_data')
+    temp_data = session.get('temp_signup_data_company')
     if not temp_data or temp_data['email'] != email:
         return jsonify({"error": "Sign-up session not found or email mismatch"}), 400
 
@@ -90,14 +88,14 @@ def verify_email():
         conn = mysql.connector.connect(**db_config)
         cursor = conn.cursor()
         query = """
-            INSERT INTO CLUB_DETAILS (club_name, email, password_hash, contact_number)
+            INSERT INTO CLUB_DETAILS (company_name, Industry, email, password)
             VALUES (%s, %s, %s, %s)
         """
         cursor.execute(query, (
-            temp_data['club_name'],
+            temp_data['company_name'],
+            temp_data['Industry'],
             temp_data['email'],
-            temp_data['password_hash'],
-            temp_data['contact_number']
+            temp_data['password']
         ))
         conn.commit()
         cursor.close()
@@ -106,9 +104,118 @@ def verify_email():
         return jsonify({"error": str(err)}), 500
 
     # Clear the temporary data
-    del session['temp_signup_data']
+    del session['temp_signup_data_company']
+
+    return jsonify({"message": "Company registered successfully"}), 201
+
+
+
+#-------------CLUB-----------------
+# Sign Up for Club - Initial step for collecting data and sending verification code
+@app.route('/club/signup', methods=['POST'])
+def signup_club():
+    data = request.json
+    club_name = data.get('club_name')
+    email = data.get('email')
+    password = data.get('password')
+    college = data.get('college')
+
+    # Register user in Cognito and send a verification code to the email
+    try:
+        cognito_client.sign_up(
+            ClientId=app.config['COGNITO_CLIENT_ID'],
+            Username=email,
+            Password=password,
+            UserAttributes=[
+                {'Name': 'email', 'Value': email},
+            ]
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+    # Store the temporary club data for later use upon verification
+    session['temp_signup_data_club'] = {
+        'club_name': club_name,
+        'email': email,
+        'password': password,
+        'college': college
+    }
+
+    return jsonify({"message": "Verification code sent to email"}), 200
+
+# Verify Email and Complete Sign Up club
+@app.route('/club/verify_email', methods=['POST'])
+def verify_email():
+    data = request.json
+    email = data.get('email')
+    code = data.get('code')
+
+    # Verify the code with Cognito
+    try:
+        cognito_client.confirm_sign_up(
+            ClientId=app.config['COGNITO_CLIENT_ID'],
+            Username=email,
+            ConfirmationCode=code
+        )
+    except Exception as e:
+        return jsonify({"error": "Invalid verification code or email"}), 400
+
+    # Retrieve temporary signup data
+    temp_data = session.get('temp_signup_data_club')
+    if not temp_data or temp_data['email'] != email:
+        return jsonify({"error": "Sign-up session not found or email mismatch"}), 400
+
+    # Save club details to the RDS database upon successful verification
+    try:
+        conn = mysql.connector.connect(**db_config)
+        cursor = conn.cursor()
+        query = """
+            INSERT INTO CLUB_DETAILS (club_name, email, password, college)
+            VALUES (%s, %s, %s, %s)
+        """
+        cursor.execute(query, (
+            temp_data['club_name'],
+            temp_data['email'],
+            temp_data['password'],
+            temp_data['college']
+        ))
+        conn.commit()
+        cursor.close()
+        conn.close()
+    except mysql.connector.Error as err:
+        return jsonify({"error": str(err)}), 500
+
+    # Clear the temporary data
+    del session['temp_signup_data_club']
 
     return jsonify({"message": "Club registered successfully"}), 201
+
+#------------------EVENTS---------------
+# Get all the events for showcasing
+@app.route("/get_events", METHODS = ["GET"])
+def get_events():
+    query = '''
+        SELECT EVENT_NAME,CLUB_NAME,EVENT_DATE,LOCATION,AMOUNT,EVENT_DETAILS, FROM EVENT_DETAILS)
+    '''
+    conn = mysql.connector.connect(**db_config)
+    cursor = conn.cursor()
+    cursor.execute(query)
+    query_output = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    response = {"data":
+                    {
+                        {
+                            "EVENT_NAME":i[0],
+                            "CLUB_NAME":i[1],
+                            "EVENT_DATE":i[2],
+                            "LOCATION":i[3],
+                            "AMOUNT":i[4],
+                            "EVENT_DETAILS":i[5]
+                        } for i in query_output
+                    }
+                }
+    return jsonify(response), 201
 
 # Run the application
 if __name__ == '__main__':
