@@ -113,14 +113,14 @@ export function EventCard({ event, isCompany, onSponsor }: EventCardProps) {
                 Maximum amount: ${event.sponsorshipNeeded}
               </p>
             </div>
-            <div className="space-y-2">
+            {/* <div className="space-y-2">
               <Label htmlFor="message">Message to Club (Optional)</Label>
               <Textarea
                 id="message"
                 name="message"
                 placeholder="Include any specific requirements or questions..."
               />
-            </div>
+            </div> */}
             <Button type="submit" className="w-full" disabled={isLoading}>
               Submit Sponsorship
             </Button>
