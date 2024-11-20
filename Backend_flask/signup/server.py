@@ -281,7 +281,7 @@ def company_login():
 @app.route("/get_events", methods=["GET"])
 def get_events():
     query = '''
-        SELECT EVENT_NAME,CLUB_NAME,EVENT_DATE,LOCATION,AMOUNT,EVENT_DETAILS, FROM EVENT_DETAILS)
+        SELECT EVENT_NAME,CLUB_NAME,EVENT_DATE,LOCATION,AMOUNT,EVENT_DETAILS,EVENT_IMG FROM EVENT_DETAILS)
     '''
     conn = mysql.connector.connect(**db_config)
     cursor = conn.cursor()
@@ -297,7 +297,8 @@ def get_events():
                             "EVENT_DATE":i[2],
                             "LOCATION":i[3],
                             "AMOUNT":i[4],
-                            "EVENT_DETAILS":i[5]
+                            "EVENT_DETAILS":i[5],
+                            "EVENT_IMG":i[6]
                         } for i in query_output
                     }
                 }
@@ -350,6 +351,58 @@ def confirm_sponsorship():
             cursor.close()
             conn.close()
 
+@app.route('/add_event', methods=['POST'])
+def add_event():
+    data = request.json
+    club_id = data.get('club_id')
+    event_name = data.get('event_name')
+    club_name = data.get('club_name')
+    event_date = data.get('event_date')
+    location = data.get('location')
+    amount = data.get('amount')
+    event_details = data.get('event_details')
+    event_image_url = data.get('event_image_url', '')  # Optional field for image URL
+
+    # try:
+    #     conn = mysql.connector.connect(**db_config)
+    #     cursor = conn.cursor()
+    #     get_club = '''
+    #         SELECT CLUB_ID FROM CLUB_DETAILS WHERE CLUB_NAME = %s
+    #     '''
+    #     cursor.execute(get_club,(club_id))
+    #     data = cursor.fetchall()
+    # except mysql.connector.Error as err:
+    #     return jsonify({"error": str(err)}), 500
+
+    # Insert event details into the database
+    try:
+        conn = mysql.connector.connect(**db_config)
+        cursor = conn.cursor()
+
+        query = """
+            INSERT INTO EVENT_DETAILS (CLUB_ID, EVENT_NAME, CLUB_NAME, EVENT_DATE, LOCATION, AMOUNT, EVENT_DETAILS, EVENT_IMAGE_URL)
+            VALUES ( %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+
+        cursor.execute(query, (
+            # data,
+            club_id,
+            event_name,
+            club_name,
+            event_date,
+            location,
+            amount,
+            event_details,
+            event_image_url
+        ))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({"message": "Event added successfully"}), 201
+    except mysql.connector.Error as err:
+        return jsonify({"error": str(err)}), 500
 
 # Run the application
 if __name__ == '__main__':
