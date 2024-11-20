@@ -3,16 +3,16 @@ from flask_cognito import CognitoAuth
 import mysql.connector
 from werkzeug.security import generate_password_hash
 import boto3
+from flask_cors import CORS
 
 app = Flask(__name__)
 app.secret_key = '123'
+CORS(app)
 
 # Cognito Configuration
 app.config['COGNITO_REGION'] = 'ap-south-1'  # Change to your AWS region
 app.config['COGNITO_USERPOOL_ID'] = 'ap-south-1_TimL919pQ'
 app.config['COGNITO_CLIENT_ID'] = '4ccp0ohq6uqv24sb4r74cj9abs'
-# app.config['COGNITO_CLIENT_SECRET'] = 'your_client_secret'
-# app.config['COGNITO_REDIRECT_URL'] = 'https://yourapp.com/callback'
 
 cognito = CognitoAuth(app)
 
@@ -28,10 +28,10 @@ db_config = {
 # AWS Cognito client setup
 cognito_client = boto3.client('cognito-idp', region_name=app.config['COGNITO_REGION'])
 
-#--------------COMPANY----------------
+#--------------COMPANY SIGNUP----------------
 # Sign Up for Company - Initial step for collecting data and sending verification code
 @app.route('/company/signup', methods=['POST'])
-def signup_club():
+def signup_conpany():
     data = request.json
     company_name = data.get('company_name')
     email = data.get('email')
@@ -63,7 +63,7 @@ def signup_club():
 
 # Verify Email and Complete Sign Up club
 @app.route('/company/verify_email', methods=['POST'])
-def verify_email():
+def comapany_verify_email():
     data = request.json
     email = data.get('email')
     code = data.get('code')
@@ -88,7 +88,7 @@ def verify_email():
         conn = mysql.connector.connect(**db_config)
         cursor = conn.cursor()
         query = """
-            INSERT INTO CLUB_DETAILS (company_name, Industry, email, password)
+            INSERT INTO COMPANY_DETAILS (company_name, Industry, email, password)
             VALUES (%s, %s, %s, %s)
         """
         cursor.execute(query, (
@@ -110,7 +110,7 @@ def verify_email():
 
 
 
-#-------------CLUB-----------------
+#-------------CLUB SIGNUP-----------------
 # Sign Up for Club - Initial step for collecting data and sending verification code
 @app.route('/club/signup', methods=['POST'])
 def signup_club():
@@ -190,9 +190,95 @@ def verify_email():
 
     return jsonify({"message": "Club registered successfully"}), 201
 
+#----------------LOGINS----------------
+@app.route('/club/login', methods=['POST'])
+def club_login():
+    data = request.json
+    email = data.get('email')
+    password = data.get('password')
+
+    if not email or not password:
+        return jsonify({"error": "Email and password are required"}), 400
+
+    try:
+        # Connect to the database
+        conn = mysql.connector.connect(**db_config)
+        cursor = conn.cursor(dictionary=True)
+
+        # Query to check if the club exists
+        query = "SELECT club_id, email, password FROM CLUB_DETAILS WHERE email = %s"
+        cursor.execute(query, (email,))
+        club = cursor.fetchone()
+
+        if not club:
+            return jsonify({"error": "Invalid email or password"}), 401
+
+        # Verify the password
+        if not password == club["password"]:  # Replace with hashed password check
+            return jsonify({"error": "Invalid email or password"}), 401
+
+        # Set session or return a response
+        session['club_id'] = club['club_id']
+
+        return jsonify({
+            "message": "Club login successful",
+            "club_id": club['club_id']
+        }), 200
+
+    except mysql.connector.Error as err:
+        return jsonify({"error": str(err)}), 500
+
+    finally:
+        if conn.is_connected():
+            cursor.close()
+            conn.close()
+
+
+@app.route('/company/login', methods=['POST'])
+def company_login():
+    data = request.json
+    email = data.get('email')
+    password = data.get('password')
+
+    if not email or not password:
+        return jsonify({"error": "Email and password are required"}), 400
+
+    try:
+        # Connect to the database
+        conn = mysql.connector.connect(**db_config)
+        cursor = conn.cursor(dictionary=True)
+
+        # Query to check if the company exists
+        query = "SELECT company_id, email, password FROM COMPANY_DETAILS WHERE email = %s"
+        cursor.execute(query, (email,))
+        company = cursor.fetchone()
+
+        if not company:
+            return jsonify({"error": "Invalid email or password"}), 401
+
+        # Verify the password
+        if not password == company["password"]:  # Replace with hashed password check
+            return jsonify({"error": "Invalid email or password"}), 401
+
+        # Set session or return a response
+        session['company_id'] = company['company_id']
+
+        return jsonify({
+            "message": "Company login successful",
+            "company_id": company['company_id']
+        }), 200
+
+    except mysql.connector.Error as err:
+        return jsonify({"error": str(err)}), 500
+
+    finally:
+        if conn.is_connected():
+            cursor.close()
+            conn.close()
+
 #------------------EVENTS---------------
 # Get all the events for showcasing
-@app.route("/get_events", METHODS = ["GET"])
+@app.route("/get_events", methods=["GET"])
 def get_events():
     query = '''
         SELECT EVENT_NAME,CLUB_NAME,EVENT_DATE,LOCATION,AMOUNT,EVENT_DETAILS, FROM EVENT_DETAILS)
@@ -216,6 +302,54 @@ def get_events():
                     }
                 }
     return jsonify(response), 201
+
+@app.route('/confirm_sponsorship', methods=['POST'])
+def confirm_sponsorship():
+    data = request.json
+    sponsor_id = data.get('sponsor_id')
+    event_id = data.get('event_id')
+    amount = data.get('amount')
+
+    if not sponsor_id or not event_id or not amount:
+        return jsonify({"error": "Sponsor ID, Event ID, and Amount are required"}), 400
+
+    try:
+        # Connect to the database
+        conn = mysql.connector.connect(**db_config)
+        cursor = conn.cursor()
+
+        # Fetch the event details
+        fetch_event_query = "SELECT * FROM EVENT_DETAILS WHERE event_id = %s"
+        cursor.execute(fetch_event_query, (event_id,))
+        event = cursor.fetchone()
+
+        if not event:
+            return jsonify({"error": "Event not found"}), 404
+
+        # Remove the event from EVENT_DETAILS
+        delete_event_query = "DELETE FROM EVENT_DETAILS WHERE event_id = %s"
+        cursor.execute(delete_event_query, (event_id,))
+
+        # Insert the sponsorship details into SPONSOR_CONFIRM
+        insert_confirm_query = """
+            INSERT INTO SPONSOR_CONFIRM (sponsor_id, event_id, amount, confirmation_date)
+            VALUES (%s, %s, %s, NOW())
+        """
+        cursor.execute(insert_confirm_query, (sponsor_id, event_id, amount))
+
+        # Commit the changes
+        conn.commit()
+
+        return jsonify({"message": "Sponsorship confirmed and event removed from EVENT_DETAILS"}), 200
+
+    except mysql.connector.Error as err:
+        return jsonify({"error": str(err)}), 500
+
+    finally:
+        if conn.is_connected():
+            cursor.close()
+            conn.close()
+
 
 # Run the application
 if __name__ == '__main__':
