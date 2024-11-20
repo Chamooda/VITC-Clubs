@@ -62,8 +62,7 @@ export default function CompanyAuth() {
     } catch (error) {
       toast({
         title: "Error",
-        description: error.message,
-        variant: "destructive",
+        description: String(error) || "An unexpected error occurred.",        variant: "destructive",
       });
     } finally {
       setIsLoading(false);
@@ -135,8 +134,7 @@ export default function CompanyAuth() {
     } catch (error) {
       toast({
         title: "Error",
-        description: error.message,
-        variant: "destructive",
+        description: String(error) || "An unexpected error occurred.",        variant: "destructive",
       });
     } finally {
       setIsLoading(false);
