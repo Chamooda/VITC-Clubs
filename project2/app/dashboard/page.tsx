@@ -121,7 +121,7 @@ export default function Dashboard() {
     }
   };
 
-  const handleSponsorEvent = async (eventId: number, amount: number, message: string) => {
+  const handleSponsorEvent = async (eventId: number, amount: number) => {
     setIsLoading(true);
 
     // Get the sponsor's email from sessionStorage
@@ -137,7 +137,7 @@ export default function Dashboard() {
       setIsLoading(false);
       return;
     }
-    console.log(message)
+
     try {
       const response = await fetch("http://13.203.61.213:5000/confirm_sponsorship", {
         method: "POST",
@@ -148,7 +148,6 @@ export default function Dashboard() {
           eventId,
           amount,
           email: sponsorEmail,
-          message,
         }),
       });
 
