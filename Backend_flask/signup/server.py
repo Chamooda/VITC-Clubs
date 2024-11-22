@@ -9,6 +9,7 @@ app = Flask(__name__)
 app.secret_key = '123'
 CORS(app)
 
+
 # Cognito Configuration
 app.config['COGNITO_REGION'] = 'ap-south-1'  # Change to your AWS region
 app.config['COGNITO_USERPOOL_ID'] = 'ap-south-1_TimL919pQ'
@@ -31,83 +32,88 @@ cognito_client = boto3.client('cognito-idp', region_name=app.config['COGNITO_REG
 #--------------COMPANY SIGNUP----------------
 # Sign Up for Company - Initial step for collecting data and sending verification code
 @app.route('/company/signup', methods=['POST'])
-def signup_conpany():
+def signup_company():
     data = request.json
     company_name = data.get('company_name')
     email = data.get('email')
     password = data.get('password')
-    Industry = data.get('Industry')
+    industry = data.get('industry')
 
-    # Register user in Cognito and send a verification code to the email
     try:
+        # Save temporary data to the database
+        conn = mysql.connector.connect(**db_config)
+        cursor = conn.cursor()
+        query = """
+            INSERT INTO TEMP_COMPANY_SIGNUP (email, company_name, password, industry)
+            VALUES (%s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+            company_name = VALUES(company_name), password = VALUES(password), industry = VALUES(industry)
+        """
+        cursor.execute(query, (email, company_name, password, industry))
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        # Send verification code through Cognito
         cognito_client.sign_up(
             ClientId=app.config['COGNITO_CLIENT_ID'],
             Username=email,
             Password=password,
-            UserAttributes=[
-                {'Name': 'email', 'Value': email},
-            ]
+            UserAttributes=[{'Name': 'email', 'Value': email}],
         )
     except Exception as e:
         return jsonify({"error": str(e)}), 400
-
-    # Store the temporary club data for later use upon verification
-    session['temp_signup_data_company'] = {
-        'company_name': company_name,
-        'Industry': Industry,
-        'email': email,
-        'password': password
-    }
 
     return jsonify({"message": "Verification code sent to email"}), 200
 
 # Verify Email and Complete Sign Up club
 @app.route('/company/verify_email', methods=['POST'])
-def comapany_verify_email():
+def verify_email_company():
     data = request.json
     email = data.get('email')
     code = data.get('code')
 
-    # Verify the code with Cognito
     try:
+        # Verify the code with Cognito
         cognito_client.confirm_sign_up(
             ClientId=app.config['COGNITO_CLIENT_ID'],
             Username=email,
             ConfirmationCode=code
         )
-    except Exception as e:
-        return jsonify({"error": "Invalid verification code or email"}), 400
 
-    # Retrieve temporary signup data
-    temp_data = session.get('temp_signup_data_company')
-    if not temp_data or temp_data['email'] != email:
-        return jsonify({"error": "Sign-up session not found or email mismatch"}), 400
-
-    # Save club details to the RDS database upon successful verification
-    try:
+        # Retrieve temporary signup data from the database
         conn = mysql.connector.connect(**db_config)
-        cursor = conn.cursor()
+        cursor = conn.cursor(dictionary=True)
+        query = "SELECT * FROM TEMP_COMPANY_SIGNUP WHERE email = %s"
+        cursor.execute(query, (email,))
+        temp_data = cursor.fetchone()
+
+        if not temp_data:
+            return jsonify({"error": "No signup data found for this email"}), 404
+
+        # Save the verified data to COMPANY_DETAILS
         query = """
-            INSERT INTO COMPANY_DETAILS (company_name, Industry, email, password)
+            INSERT INTO COMPANY_DETAILS (company_name, email, password, industry)
             VALUES (%s, %s, %s, %s)
         """
         cursor.execute(query, (
             temp_data['company_name'],
-            temp_data['Industry'],
             temp_data['email'],
-            temp_data['password']
+            temp_data['password'],
+            temp_data['industry']
         ))
+        conn.commit()
+
+        # Clean up temporary data
+        cursor.execute("DELETE FROM TEMP_COMPANY_SIGNUP WHERE email = %s", (email,))
         conn.commit()
         cursor.close()
         conn.close()
-    except mysql.connector.Error as err:
-        return jsonify({"error": str(err)}), 500
 
-    # Clear the temporary data
-    del session['temp_signup_data_company']
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
     return jsonify({"message": "Company registered successfully"}), 201
-
 
 
 #-------------CLUB SIGNUP-----------------
@@ -120,55 +126,59 @@ def signup_club():
     password = data.get('password')
     college = data.get('college')
 
-    # Register user in Cognito and send a verification code to the email
     try:
+        # Save temporary data to the database
+        conn = mysql.connector.connect(**db_config)
+        cursor = conn.cursor()
+        query = """
+            INSERT INTO TEMP_SIGNUP (email, club_name, password, college)
+            VALUES (%s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+            club_name = VALUES(club_name), password = VALUES(password), college = VALUES(college)
+        """
+        cursor.execute(query, (email, club_name, password, college))
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        # Send verification code through Cognito
         cognito_client.sign_up(
             ClientId=app.config['COGNITO_CLIENT_ID'],
             Username=email,
             Password=password,
-            UserAttributes=[
-                {'Name': 'email', 'Value': email},
-            ]
+            UserAttributes=[{'Name': 'email', 'Value': email}],
         )
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
-    # Store the temporary club data for later use upon verification
-    session['temp_signup_data_club'] = {
-        'club_name': club_name,
-        'email': email,
-        'password': password,
-        'college': college
-    }
-
     return jsonify({"message": "Verification code sent to email"}), 200
 
-# Verify Email and Complete Sign Up club
+
 @app.route('/club/verify_email', methods=['POST'])
 def verify_email():
     data = request.json
     email = data.get('email')
     code = data.get('code')
 
-    # Verify the code with Cognito
     try:
+        # Verify the code with Cognito
         cognito_client.confirm_sign_up(
             ClientId=app.config['COGNITO_CLIENT_ID'],
             Username=email,
             ConfirmationCode=code
         )
-    except Exception as e:
-        return jsonify({"error": "Invalid verification code or email"}), 400
 
-    # Retrieve temporary signup data
-    temp_data = session.get('temp_signup_data_club')
-    if not temp_data or temp_data['email'] != email:
-        return jsonify({"error": "Sign-up session not found or email mismatch"}), 400
-
-    # Save club details to the RDS database upon successful verification
-    try:
+        # Retrieve temporary signup data from the database
         conn = mysql.connector.connect(**db_config)
-        cursor = conn.cursor()
+        cursor = conn.cursor(dictionary=True)
+        query = "SELECT * FROM TEMP_SIGNUP WHERE email = %s"
+        cursor.execute(query, (email,))
+        temp_data = cursor.fetchone()
+
+        if not temp_data:
+            return jsonify({"error": "No signup data found for this email"}), 404
+
+        # Save the verified data to CLUB_DETAILS
         query = """
             INSERT INTO CLUB_DETAILS (club_name, email, password, college)
             VALUES (%s, %s, %s, %s)
@@ -180,13 +190,15 @@ def verify_email():
             temp_data['college']
         ))
         conn.commit()
+
+        # Clean up temporary data
+        cursor.execute("DELETE FROM TEMP_SIGNUP WHERE email = %s", (email,))
+        conn.commit()
         cursor.close()
         conn.close()
-    except mysql.connector.Error as err:
-        return jsonify({"error": str(err)}), 500
 
-    # Clear the temporary data
-    del session['temp_signup_data_club']
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
     return jsonify({"message": "Club registered successfully"}), 201
 
@@ -278,10 +290,12 @@ def company_login():
 
 #------------------EVENTS---------------
 # Get all the events for showcasing
+import base64
+
 @app.route("/get_events", methods=["GET"])
 def get_events():
     query = '''
-        SELECT EVENT_NAME,CLUB_NAME,EVENT_DATE,LOCATION,AMOUNT,EVENT_DETAILS,EVENT_IMG FROM EVENT_DETAILS)
+        SELECT event_name, club_name, event_date, location, amount, event_details, event_image, event_id FROM EVENT_DETAILS
     '''
     conn = mysql.connector.connect(**db_config)
     cursor = conn.cursor()
@@ -289,59 +303,83 @@ def get_events():
     query_output = cursor.fetchall()
     cursor.close()
     conn.close()
-    response = {"data":
-                    {
-                        {
-                            "EVENT_NAME":i[0],
-                            "CLUB_NAME":i[1],
-                            "EVENT_DATE":i[2],
-                            "LOCATION":i[3],
-                            "AMOUNT":i[4],
-                            "EVENT_DETAILS":i[5],
-                            "EVENT_IMG":i[6]
-                        } for i in query_output
-                    }
-                }
-    return jsonify(response), 201
+
+    # Convert binary image data to base64 string
+    response = {"data": [
+        {
+            "id":i[7],
+            "title": i[0],
+            "clubName": i[1],
+            "date": i[2],
+            "location": i[3],
+            "sponsorshipNeeded": i[4],
+            "description": i[5],
+            "image": i[6] # encode image to base64
+        } for i in query_output
+    ]}
+    return jsonify(response), 200
 
 @app.route('/confirm_sponsorship', methods=['POST'])
 def confirm_sponsorship():
     data = request.json
-    sponsor_id = data.get('sponsor_id')
-    event_id = data.get('event_id')
-    amount = data.get('amount')
 
-    if not sponsor_id or not event_id or not amount:
+    # Extract data from the request
+    sponsor_email = data.get('email')
+    event_id = data.get('eventId')
+    amount = data.get('amount')
+    # message = data.get('message')
+
+    if not sponsor_email or not event_id or not amount:
         return jsonify({"error": "Sponsor ID, Event ID, and Amount are required"}), 400
 
     try:
-        # Connect to the database
         conn = mysql.connector.connect(**db_config)
         cursor = conn.cursor()
 
-        # Fetch the event details
-        fetch_event_query = "SELECT * FROM EVENT_DETAILS WHERE event_id = %s"
+        # Fetch event details
+        fetch_event_query = """
+            SELECT e.amount, e.club_id, c.email 
+            FROM EVENT_DETAILS e
+            JOIN CLUB_DETAILS c ON e.club_id = c.club_id
+            WHERE e.event_id = %s
+        """
         cursor.execute(fetch_event_query, (event_id,))
         event = cursor.fetchone()
 
         if not event:
             return jsonify({"error": "Event not found"}), 404
 
-        # Remove the event from EVENT_DETAILS
-        delete_event_query = "DELETE FROM EVENT_DETAILS WHERE event_id = %s"
-        cursor.execute(delete_event_query, (event_id,))
+        remaining_amount, club_id, club_email = event
 
-        # Insert the sponsorship details into SPONSOR_CONFIRM
+        if remaining_amount <= amount:
+            # If the full amount is covered, delete the event
+            delete_event_query = "DELETE FROM EVENT_DETAILS WHERE event_id = %s"
+            cursor.execute(delete_event_query, (event_id,))
+            status_message = "Full sponsorship received. Event removed from EVENT_DETAILS."
+        else:
+            # Update the remaining amount in EVENT_DETAILS
+            update_event_query = """
+                UPDATE EVENT_DETAILS 
+                SET amount = amount - %s 
+                WHERE event_id = %s
+            """
+            cursor.execute(update_event_query, (amount, event_id))
+            status_message = "Partial sponsorship received. Remaining amount updated in EVENT_DETAILS."
+
+        # Insert sponsorship confirmation into SPONSOR_CONFIRM
         insert_confirm_query = """
             INSERT INTO SPONSOR_CONFIRM (sponsor_id, event_id, amount, confirmation_date)
             VALUES (%s, %s, %s, NOW())
         """
-        cursor.execute(insert_confirm_query, (sponsor_id, event_id, amount))
+        cursor.execute(insert_confirm_query, (sponsor_email, event_id, amount))
 
-        # Commit the changes
+        # Send email to the club
+        # send_email_to_club(club_email, sponsor_email, event_id, amount)
+
+        # Commit the transaction
         conn.commit()
 
-        return jsonify({"message": "Sponsorship confirmed and event removed from EVENT_DETAILS"}), 200
+        return jsonify({"message": status_message}), 200
 
     except mysql.connector.Error as err:
         return jsonify({"error": str(err)}), 500
@@ -353,49 +391,54 @@ def confirm_sponsorship():
 
 @app.route('/add_event', methods=['POST'])
 def add_event():
-    data = request.form
-    event_name = data.get('event_name')
-    club_id = data.get('club_id')
-    event_date = data.get('event_date')
-    location = data.get('location')
-    amount = data.get('amount')
-    event_details = data.get('event_details')
+    data = request.json
 
-    # Get the event image from the request (binary data)
-    event_image = request.files.get('event_image')
+    # Extract data from the request
+    club_email = data.get('clubEmail')
+    event_name = data.get('title')
+    event_date = data.get('date')
+    location = data.get('location')
+    amount = data.get('sponsorshipNeeded')
+    event_details = data.get('description')
+    event_image = data.get('image')  # Assuming event_image is provided as a URL
 
     # Ensure all required fields are provided
-    if not event_name or not club_id or not event_date or not location or not amount:
+    if not club_email or not event_name or not event_date or not location or not amount:
         return jsonify({"error": "Missing required fields"}), 400
-
-    # Convert the event image to binary if it exists
-    event_image_data = None
-    if event_image:
-        event_image_data = event_image.read()  # Read image as binary
 
     try:
         # Establish database connection
         conn = mysql.connector.connect(**db_config)
         cursor = conn.cursor()
 
-        # SQL query to insert event data
-        query = """
+        # Fetch club_id from CLUB_DETAILS using clubEmail
+        fetch_club_id_query = "SELECT club_id FROM CLUB_DETAILS WHERE email = %s"
+        cursor.execute(fetch_club_id_query, (club_email,))
+        club_id = cursor.fetchone()
+
+        if not club_id:
+            return jsonify({"error": "Club not found with the provided email"}), 404
+
+        # Insert event into EVENT_DETAILS
+        insert_event_query = """
             INSERT INTO EVENT_DETAILS 
             (event_name, club_id, event_date, location, amount, event_details, event_image)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
         """
-
-        cursor.execute(query, (
+        cursor.execute(insert_event_query, (
             event_name,
-            club_id,
+            club_id[0],  # Extracting club_id from the fetched result
             event_date,
             location,
             amount,
             event_details,
-            event_image_data
+            event_image
         ))
 
+        # Commit the transaction
         conn.commit()
+
+        # Close the database connection
         cursor.close()
         conn.close()
 
@@ -403,6 +446,10 @@ def add_event():
 
     except mysql.connector.Error as err:
         return jsonify({"error": str(err)}), 500
+
+    finally:
+        if conn.is_connected():
+            conn.close()
 
 # Run the application
 if __name__ == '__main__':
